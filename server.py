@@ -76,12 +76,16 @@ def home():
 # Bootstrap leader wait loop
 # -----------------------------------------------------
 if __name__ == '__main__':
-    print(f"🚀 Starting PyMonNet Manager Receiver on {socket.gethostname()}")
-    while True:
-        if is_swarm_leader():
-            print("✅ Node is Swarm leader — starting Flask server...")
-            app.run(host='0.0.0.0', port=6969)
-            break
-        else:
-            print("⏳ Waiting for this node to become leader...")
-            time.sleep(5)
+    host = socket.gethostname()
+    try:
+        leader = subprocess.check_output(
+            ["docker", "node", "ls", "--format", "{{.Hostname}} {{.ManagerStatus}}"]
+        ).decode()
+        leader_node = next((ln.split()[0] for ln in leader.splitlines() if "Leader" in ln), "unknown")
+    except Exception:
+        leader_node = "unknown"
+
+    print(f"🚀 Starting PyMonNet Manager Receiver on {host}")
+    print(f"🔍 Leader node: {leader_node}, Current node: {host}")
+    # Start Flask immediately so service can answer
+    app.run(host='0.0.0.0', port=6969)
