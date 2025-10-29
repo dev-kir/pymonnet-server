@@ -77,8 +77,11 @@ def home():
 # -----------------------------------------------------
 if __name__ == '__main__':
     print(f"🚀 Starting PyMonNet Manager Receiver on {socket.gethostname()}")
-    while not is_swarm_leader():
-        print("⏳ Waiting for this node to become leader...")
-        time.sleep(5)
-    print("✅ Node is Swarm leader — starting Flask server...")
-    app.run(host='0.0.0.0', port=6969)
+    while True:
+        if is_swarm_leader():
+            print("✅ Node is Swarm leader — starting Flask server...")
+            app.run(host='0.0.0.0', port=6969)
+            break
+        else:
+            print("⏳ Waiting for this node to become leader...")
+            time.sleep(5)
