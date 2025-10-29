@@ -4,13 +4,18 @@
 # RUN pip install flask
 # CMD ["python3", "server.py"]
 
+# ================================
+# PyMonNet Leader-Aware Server
+# ================================
 FROM python:3.11-slim
 
 WORKDIR /app
 COPY server.py /app/
 
-RUN apt-get update && apt-get install -y docker-cli && \
+# Install Docker CLI (for leader detection) + Flask
+RUN apt-get update && apt-get install -y docker-cli procps && \
     pip install flask requests && \
     rm -rf /var/lib/apt/lists/*
 
-CMD ["python3", "server.py"]
+# Run in unbuffered mode for real-time logs
+CMD ["python3", "-u", "server.py"]
