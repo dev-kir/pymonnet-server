@@ -13,21 +13,34 @@ nodes = {}
 # Leader detection helper
 # -----------------------------------------------------
 def is_swarm_leader():
-    """Return True if this node is the current Docker Swarm leader."""
+    """Detect if this container is running on the Swarm leader manager."""
     try:
+        # 1️⃣ Get the real manager hostname list from docker node ls
         result = subprocess.run(
             ["docker", "node", "ls", "--format", "{{.Hostname}} {{.ManagerStatus}}"],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True
         )
-        hostname = socket.gethostname()
+        leader = None
         for line in result.stdout.splitlines():
-            if hostname in line and "Leader" in line:
-                return True
+            if "Leader" in line:
+                leader = line.split()[0]
+                break
+
+        # 2️⃣ Get host node hostname (via Docker info)
+        node_info = subprocess.run(
+            ["docker", "info", "--format", "{{.Name}}"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True
+        )
+        current = node_info.stdout.strip()
+
+        print(f"🔍 Leader node: {leader}, Current node: {current}")
+        return leader == current
     except subprocess.CalledProcessError as e:
         print(f"⚠️ Docker CLI error: {e.stderr.strip()}")
     except Exception as e:
         print(f"❌ Leader check failed: {e}")
     return False
+
 
 # -----------------------------------------------------
 # API endpoints
