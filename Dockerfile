@@ -17,5 +17,8 @@ RUN apt-get update && apt-get install -y docker-cli procps && \
     pip install flask requests && \
     rm -rf /var/lib/apt/lists/*
 
+# Expose Flask port
+EXPOSE 6969
+
 # Run in unbuffered mode for real-time logs
 CMD ["python3", "-u", "server.py"]
