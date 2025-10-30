@@ -1,91 +1,70 @@
 #!/usr/bin/env python3
 from flask import Flask, request, jsonify
-from datetime import datetime
-import subprocess, socket, time, sys
-
-# Always flush logs immediately
-sys.stdout.reconfigure(line_buffering=True)
+from datetime import datetime, timedelta
+import threading, subprocess, socket, time, json, os
 
 app = Flask(__name__)
-nodes = {}
 
-# -----------------------------------------------------
-# Leader detection helper
-# -----------------------------------------------------
-def is_swarm_leader():
-    """Detect if this container is running on the Swarm leader manager."""
+DATA_FILE = "nodes.json"
+MAX_AGE_MIN = 10
+
+# Load old data if exists
+if os.path.exists(DATA_FILE):
+    with open(DATA_FILE, "r") as f:
+        try:
+            nodes = json.load(f)
+        except json.JSONDecodeError:
+            nodes = {}
+else:
+    nodes = {}
+
+def save_nodes():
+    """Save current metrics to JSON file."""
     try:
-        # 1️⃣ Get the real manager hostname list from docker node ls
-        result = subprocess.run(
-            ["docker", "node", "ls", "--format", "{{.Hostname}} {{.ManagerStatus}}"],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True
-        )
-        leader = None
-        for line in result.stdout.splitlines():
-            if "Leader" in line:
-                leader = line.split()[0]
-                break
-
-        # 2️⃣ Get host node hostname (via Docker info)
-        node_info = subprocess.run(
-            ["docker", "info", "--format", "{{.Name}}"],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True
-        )
-        current = node_info.stdout.strip()
-
-        print(f"🔍 Leader node: {leader}, Current node: {current}")
-        return leader == current
-    except subprocess.CalledProcessError as e:
-        print(f"⚠️ Docker CLI error: {e.stderr.strip()}")
+        with open(DATA_FILE, "w") as f:
+            json.dump(nodes, f, indent=2)
     except Exception as e:
-        print(f"❌ Leader check failed: {e}")
-    return False
+        print(f"⚠️ Error saving JSON: {e}")
 
+def cleanup_old_data():
+    """Remove samples older than MAX_AGE_MIN."""
+    cutoff = datetime.now() - timedelta(minutes=MAX_AGE_MIN)
+    for node, samples in list(nodes.items()):
+        filtered = [s for s in samples if datetime.fromisoformat(s["timestamp"]) > cutoff]
+        if filtered:
+            nodes[node] = filtered
+        else:
+            nodes.pop(node, None)
 
-# -----------------------------------------------------
-# API endpoints
-# -----------------------------------------------------
 @app.route('/metrics', methods=['POST'])
 def receive_metrics():
-    if not is_swarm_leader():
-        print("❌ Rejected /metrics — not the leader node.")
-        return jsonify({"error": "this node is not leader"}), 403
-
     try:
         data = request.get_json(force=True)
-        node = data.get('node', 'unknown')
+        node = data.get('node')
         data['timestamp'] = datetime.now().isoformat(timespec='seconds')
-        nodes[node] = data
-        print(f"[{data['timestamp']}] ✅ {node}: {data}")
+
+        # Keep list of samples per node
+        nodes.setdefault(node, []).append(data)
+
+        cleanup_old_data()
+        save_nodes()
+
+        print(f"[{data['timestamp']}] ✅ Stored metric for {node}: {data}")
         return jsonify({"status": "ok"}), 200
     except Exception as e:
         print(f"❌ Error receiving metrics: {e}")
         return jsonify({"error": str(e)}), 400
 
-
 @app.route('/nodes', methods=['GET'])
 def get_all_nodes():
+    """Return latest snapshot only."""
+    latest = {}
+    for node, samples in nodes.items():
+        if samples:
+            latest[node] = samples[-1]
+    return jsonify(latest), 200
+
+@app.route('/nodes/history', methods=['GET'])
+def get_all_history():
+    """Return full JSON (last 10 min)."""
     return jsonify(nodes), 200
-
-
-@app.route('/')
-def home():
-    return f"PymonNet Leader Server Active on {socket.gethostname()}", 200
-
-# -----------------------------------------------------
-# Bootstrap leader wait loop
-# -----------------------------------------------------
-if __name__ == '__main__':
-    host = socket.gethostname()
-    try:
-        leader = subprocess.check_output(
-            ["docker", "node", "ls", "--format", "{{.Hostname}} {{.ManagerStatus}}"]
-        ).decode()
-        leader_node = next((ln.split()[0] for ln in leader.splitlines() if "Leader" in ln), "unknown")
-    except Exception:
-        leader_node = "unknown"
-
-    print(f"🚀 Starting PyMonNet Manager Receiver on {host}")
-    print(f"🔍 Leader node: {leader_node}, Current node: {host}")
-    # Start Flask immediately so service can answer
-    app.run(host='0.0.0.0', port=6969)
