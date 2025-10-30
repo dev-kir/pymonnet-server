@@ -67,9 +67,8 @@ def get_all_history():
 def home():
     return "✅ PyMonNet Leader Server running (JSON mode)", 200
 
-@app.route('/dashboard')
+@app.route("/dashboard")
 def dashboard():
-    """Simple realtime dashboard (auto refreshes every 5s)."""
     return """
 <!DOCTYPE html>
 <html>
@@ -78,9 +77,10 @@ def dashboard():
   <title>PyMonNet Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body { font-family: sans-serif; background: #111; color: #eee; }
-    canvas { max-width: 800px; margin: 20px auto; display: block; }
-    h2 { text-align: center; }
+    body { font-family: sans-serif; background: #0e0e0e; color: #eee; }
+    canvas { max-width: 800px; margin: 30px auto; display: block; }
+    h2 { text-align: center; margin-top: 20px; }
+    .node-title { text-align: center; margin: 10px; font-weight: bold; color: #00ffff; }
   </style>
 </head>
 <body>
@@ -90,18 +90,30 @@ def dashboard():
   <script>
     async function fetchData() {
       const res = await fetch('/nodes/history');
-      return await res.json();
+      const json = await res.json();
+      return json;
     }
 
     async function renderCharts() {
       const data = await fetchData();
       const chartsDiv = document.getElementById('charts');
-      chartsDiv.innerHTML = '';  // clear old charts
+      chartsDiv.innerHTML = '';
 
       for (const [node, samples] of Object.entries(data)) {
-        const labels = samples.map(s => s.timestamp.split('T')[1]);
-        const cpu = samples.map(s => s.cpu);
-        const mem = samples.map(s => s.mem);
+        if (!Array.isArray(samples) || samples.length === 0) continue;
+
+        // Take only the last 30 samples
+        const recent = samples.slice(-30);
+        const labels = recent.map(s => s.timestamp.split('T')[1]);
+        const cpu = recent.map(s => s.cpu);
+        const mem = recent.map(s => s.mem);
+        const netIn = recent.map(s => s.net_in);
+        const netOut = recent.map(s => s.net_out);
+
+        const title = document.createElement('div');
+        title.className = 'node-title';
+        title.textContent = `🖥️ Node ${node}`;
+        chartsDiv.appendChild(title);
 
         const canvas = document.createElement('canvas');
         chartsDiv.appendChild(canvas);
@@ -111,13 +123,20 @@ def dashboard():
           data: {
             labels: labels,
             datasets: [
-              { label: node + ' CPU %', data: cpu, borderColor: 'red', fill: false },
-              { label: node + ' MEM %', data: mem, borderColor: 'cyan', fill: false }
+              { label: 'CPU %', data: cpu, borderColor: 'red', fill: false },
+              { label: 'MEM %', data: mem, borderColor: 'cyan', fill: false },
+              { label: 'Net In (Mbps)', data: netIn, borderColor: 'lime', fill: false, yAxisID: 'y2' },
+              { label: 'Net Out (Mbps)', data: netOut, borderColor: 'yellow', fill: false, yAxisID: 'y2' }
             ]
           },
           options: {
             responsive: true,
-            scales: { y: { beginAtZero: true, max: 100 } },
+            interaction: { mode: 'index', intersect: false },
+            stacked: false,
+            scales: {
+              y: { type: 'linear', position: 'left', min: 0, max: 100 },
+              y2: { type: 'linear', position: 'right', min: 0, grid: { drawOnChartArea: false } }
+            },
             plugins: { legend: { labels: { color: '#eee' } } }
           }
         });
@@ -125,11 +144,12 @@ def dashboard():
     }
 
     renderCharts();
-    setInterval(renderCharts, 5000); // refresh every 5s
+    setInterval(renderCharts, 5000);
   </script>
 </body>
 </html>
-    """
+"""
+
 
 if __name__ == "__main__":
     print("🚀 PyMonNet JSON Server starting on port 6969 ...")
