@@ -67,6 +67,70 @@ def get_all_history():
 def home():
     return "✅ PyMonNet Leader Server running (JSON mode)", 200
 
+@app.route('/dashboard')
+def dashboard():
+    """Simple realtime dashboard (auto refreshes every 5s)."""
+    return """
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>PyMonNet Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: sans-serif; background: #111; color: #eee; }
+    canvas { max-width: 800px; margin: 20px auto; display: block; }
+    h2 { text-align: center; }
+  </style>
+</head>
+<body>
+  <h2>📊 PyMonNet Realtime Dashboard</h2>
+  <div id="charts"></div>
+
+  <script>
+    async function fetchData() {
+      const res = await fetch('/nodes/history');
+      return await res.json();
+    }
+
+    async function renderCharts() {
+      const data = await fetchData();
+      const chartsDiv = document.getElementById('charts');
+      chartsDiv.innerHTML = '';  // clear old charts
+
+      for (const [node, samples] of Object.entries(data)) {
+        const labels = samples.map(s => s.timestamp.split('T')[1]);
+        const cpu = samples.map(s => s.cpu);
+        const mem = samples.map(s => s.mem);
+
+        const canvas = document.createElement('canvas');
+        chartsDiv.appendChild(canvas);
+
+        new Chart(canvas, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [
+              { label: node + ' CPU %', data: cpu, borderColor: 'red', fill: false },
+              { label: node + ' MEM %', data: mem, borderColor: 'cyan', fill: false }
+            ]
+          },
+          options: {
+            responsive: true,
+            scales: { y: { beginAtZero: true, max: 100 } },
+            plugins: { legend: { labels: { color: '#eee' } } }
+          }
+        });
+      }
+    }
+
+    renderCharts();
+    setInterval(renderCharts, 5000); // refresh every 5s
+  </script>
+</body>
+</html>
+    """
+
 if __name__ == "__main__":
     print("🚀 PyMonNet JSON Server starting on port 6969 ...")
     app.run(host="0.0.0.0", port=6969)
