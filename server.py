@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from flask import Flask, request, jsonify
 from datetime import datetime, timedelta
+import math
 import requests, os
 
 # ================================
@@ -19,6 +20,28 @@ MAX_AGE_MIN = 5  # keep data in memory for last 5 minutes
 # ------------------------------------------------
 
 nodes = {}  # in-memory only (no file writes)
+
+
+def _escape_tag(value):
+    """Escape tag values for InfluxDB line protocol."""
+    return (
+        str(value)
+        .replace("\\", "\\\\")
+        .replace(" ", "\\ ")
+        .replace(",", "\\,")
+        .replace("=", "\\=")
+    )
+
+
+def _clean_metric(value, decimals):
+    """Convert metric to finite float rounded to requested decimals."""
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        numeric = 0.0
+    if not math.isfinite(numeric):
+        numeric = 0.0
+    return round(numeric, decimals)
 
 def cleanup_old_data():
     """Remove samples older than MAX_AGE_MIN."""
@@ -46,15 +69,21 @@ def receive_metrics():
         cleanup_old_data()
 
         # push to InfluxDB (add role as tag)
-        cpu = round(float(data.get("cpu", 0) or 0), 2)
-        mem = round(float(data.get("mem", 0) or 0), 2)
-        net_in = round(float(data.get("net_in", 0) or 0), 4)
-        net_out = round(float(data.get("net_out", 0) or 0), 4)
+        cpu = _clean_metric(data.get("cpu", 0), 2)
+        mem = _clean_metric(data.get("mem", 0), 2)
+        net_in = _clean_metric(data.get("net_in", 0), 4)
+        net_out = _clean_metric(data.get("net_out", 0), 4)
+        status = data.get("status", "unknown")
+
+        tag_node = _escape_tag(node)
+        tag_role = _escape_tag(role)
+        status_field = str(status).replace("\\", "\\\\").replace("\"", "\\\"")
 
         line = (
-            f"nodes,node={node},role={role} "
+            f"nodes,node={tag_node},role={tag_role} "
             f"cpu={cpu:.2f},mem={mem:.2f},"
-            f"net_in={net_in:.4f},net_out={net_out:.4f} "
+            f"net_in={net_in:.4f},net_out={net_out:.4f},"
+            f"status=\"{status_field}\" "
             f"{int(datetime.now().timestamp())}"
         )
 
