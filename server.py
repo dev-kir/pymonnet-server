@@ -15,10 +15,10 @@ HEADERS = {
     "Authorization": f"Token {INFLUX_TOKEN}",
     "Content-Type": "text/plain; charset=utf-8"
 }
-MAX_AGE_MIN = 5  # keep data in memory for last 10 minutes only
+MAX_AGE_MIN = 5  # keep data in memory for last 5 minutes
 # ------------------------------------------------
 
-nodes = {}  # in-memory store only (no file)
+nodes = {}  # in-memory only (no file writes)
 
 def cleanup_old_data():
     """Remove samples older than MAX_AGE_MIN."""
@@ -30,6 +30,7 @@ def cleanup_old_data():
         else:
             nodes.pop(node, None)
 
+
 # ---------------- API ENDPOINTS ----------------
 @app.route("/metrics", methods=["POST"])
 def receive_metrics():
@@ -37,19 +38,21 @@ def receive_metrics():
     try:
         data = request.get_json(force=True)
         node = data.get("node", "unknown")
+        role = data.get("role", "unknown")
         data["timestamp"] = datetime.now().isoformat(timespec="seconds")
 
-        # keep data in memory only
+        # keep in memory only
         nodes.setdefault(node, []).append(data)
         cleanup_old_data()
 
-        # push to InfluxDB
+        # push to InfluxDB (add role as tag)
         line = (
-            f"nodes,node={node} "
+            f"nodes,node={node},role={role} "
             f"cpu={data.get('cpu',0)},mem={data.get('mem',0)},"
             f"net_in={data.get('net_in',0)},net_out={data.get('net_out',0)} "
             f"{int(datetime.now().timestamp())}"
         )
+
         try:
             r = requests.post(INFLUX_URL, headers=HEADERS, data=line.encode(), timeout=3)
             if r.status_code != 204:
@@ -57,7 +60,7 @@ def receive_metrics():
         except Exception as e:
             print(f"⚠️ Failed to push to InfluxDB: {e}")
 
-        print(f"[{data['timestamp']}] ✅ Metric stored + sent for {node}")
+        print(f"[{data['timestamp']}] ✅ Metric stored + sent for {node} ({role})")
         return jsonify({"status": "ok"}), 200
 
     except Exception as e:
@@ -74,16 +77,16 @@ def get_all_nodes():
 
 @app.route("/nodes/history", methods=["GET"])
 def get_all_history():
-    """Return last 10-minute in-memory history."""
+    """Return last few minutes of in-memory history."""
     return jsonify(nodes), 200
 
 
 @app.route("/")
 def home():
-    return "✅ PyMonNet Server → InfluxDB bridge active (memory mode)", 200
+    return "✅ PyMonNet Server → InfluxDB bridge active (memory mode, role tagging enabled)", 200
 # ------------------------------------------------
 
 
 if __name__ == "__main__":
-    print("🚀 PyMonNet Server starting (memory-only + InfluxDB)...")
+    print("🚀 PyMonNet Server starting (memory + InfluxDB + role tags)...")
     app.run(host="0.0.0.0", port=6969)
