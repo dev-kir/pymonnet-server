@@ -46,10 +46,15 @@ def receive_metrics():
         cleanup_old_data()
 
         # push to InfluxDB (add role as tag)
+        cpu = round(float(data.get("cpu", 0) or 0), 2)
+        mem = round(float(data.get("mem", 0) or 0), 2)
+        net_in = round(float(data.get("net_in", 0) or 0), 4)
+        net_out = round(float(data.get("net_out", 0) or 0), 4)
+
         line = (
             f"nodes,node={node},role={role} "
-            f"cpu={data.get('cpu',0)},mem={data.get('mem',0)},"
-            f"net_in={data.get('net_in',0)},net_out={data.get('net_out',0)} "
+            f"cpu={cpu:.2f},mem={mem:.2f},"
+            f"net_in={net_in:.4f},net_out={net_out:.4f} "
             f"{int(datetime.now().timestamp())}"
         )
 
