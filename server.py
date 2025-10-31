@@ -11,7 +11,9 @@ app = Flask(__name__)
 
 # ---------------- CONFIGURATION ----------------
 INFLUX_URL = "http://192.168.2.61:8086/api/v2/write?org=pymonnet&bucket=metrics&precision=s"
-INFLUX_TOKEN = "1jEj4kVGBLMbkd24hIBLXnuWut967r4Tho1YD5lSCYBUJdB9lYZDFbDgpC2IC1OwdbjCHt8m3vhEI8VbNRfdCQ=="
+INFLUX_TOKEN = "ks0cnTPipvphipQIuKT7w7gHAYMZx4GoxvN_3vSGAQd7o1UmcKD64WPYiIFwEteNnRuohJYqsj_4qO5Nr9yvMw=="
+
+
 HEADERS = {
     "Authorization": f"Token {INFLUX_TOKEN}",
     "Content-Type": "text/plain; charset=utf-8"
