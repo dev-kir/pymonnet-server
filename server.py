@@ -104,6 +104,44 @@ def receive_metrics():
         return jsonify({"error": str(e)}), 400
 
 
+@app.route("/container-metrics", methods=["POST"])
+def receive_container_metrics():
+    """Receive detailed container metrics when node is under stress."""
+    try:
+        data_list = request.get_json(force=True)
+        if not isinstance(data_list, list):
+            data_list = [data_list]
+
+        for data in data_list:
+            node = _escape_tag(data.get("node", "unknown"))
+            container = _escape_tag(data.get("container", "unknown"))
+            cid = _escape_tag(data.get("container_id", "unknown"))
+            role = _escape_tag(data.get("role", "unknown"))
+
+            cpu = _clean_metric(data.get("cpu", 0), 2)
+            mem = _clean_metric(data.get("mem", 0), 2)
+            net_in = _clean_metric(data.get("net_in", 0), 3)
+            net_out = _clean_metric(data.get("net_out", 0), 3)
+
+            line = (
+                f"containers,node={node},container={container},cid={cid},role={role} "
+                f"cpu={cpu:.2f},mem={mem:.2f},net_in={net_in:.3f},net_out={net_out:.3f} "
+                f"{int(datetime.now().timestamp())}"
+            )
+            try:
+                r = requests.post(INFLUX_URL, headers=HEADERS, data=line.encode(), timeout=3)
+                if r.status_code != 204:
+                    print(f"⚠️ Influx write failed for container {container}: {r.text}")
+            except Exception as err:
+                print(f"⚠️ Failed to push container metric to InfluxDB: {err}")
+
+        return jsonify({"status": "ok"}), 200
+
+    except Exception as e:
+        print(f"❌ Error in /container-metrics: {e}")
+        return jsonify({"error": str(e)}), 400
+
+
 @app.route("/nodes", methods=["GET"])
 def get_all_nodes():
     """Return latest snapshot of each node."""
