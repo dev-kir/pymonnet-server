@@ -66,6 +66,8 @@ def receive_metrics():
 
         # store in memory
         nodes.setdefault(node, []).append(data)
+        if data.get("status") == "normal" and node in containers:
+            containers.pop(node, None)
         cleanup_old_data()
 
         # InfluxDB (optional, background metric)
